@@ -2,7 +2,9 @@ import Groq from 'groq-sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+// Force this route to run at request time only — never touched during
+// Next.js's build-time "collect page data" step.
+export const dynamic = 'force-dynamic'
 
 // Wide pool of categories — AI picks a random mix each day so it never feels repetitive
 const CATEGORIES = [
@@ -13,8 +15,21 @@ const CATEGORIES = [
 
 export async function POST(req: NextRequest) {
   try {
+    // ⬇️ Clients are created HERE, inside the handler, not at module scope.
+    // This means they only run when a real request comes in (runtime),
+    // never during the build's static analysis pass — so a missing/late
+    // env var can no longer crash the whole build.
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json({ error: 'Server misconfigured: missing GROQ_API_KEY.' }, { status: 500 })
+    }
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: 'Server misconfigured: missing Supabase env vars.' }, { status: 500 })
+    }
+
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+
     const { todayISO } = await req.json()
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
     // Shared set for the day — everyone gets the same 5 questions (for the leaderboard to make sense)
     const { data: existing } = await supabase.from('daily_challenges')
@@ -48,7 +63,6 @@ Return ONLY valid JSON, an array of 5 objects with fields: prompt, options (arra
       return NextResponse.json({ error: 'AI returned malformed JSON.' }, { status: 500 })
     }
 
-    // ⬇️ ITO YUNG BINAGO — dating simpleng insert, ngayon may race-condition handling
     const { data: inserted, error: insertError } = await supabase
       .from('daily_challenges')
       .insert({ challenge_date: todayISO, questions })
@@ -70,7 +84,6 @@ Return ONLY valid JSON, an array of 5 objects with fields: prompt, options (arra
     }
 
     return NextResponse.json({ questions: inserted.questions })
-    // ⬆️ HANGGANG DITO YUNG BINAGO
   } catch (err) {
     console.error('daily-challenge error:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to generate daily challenge.' }, { status: 500 })
