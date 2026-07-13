@@ -12,30 +12,38 @@ import { Spinner } from '@/components/ui'
 
 const ProfileContext = createContext<{ profile: Profile | null; refreshProfile: () => void }>({
   profile: null,
-  refreshProfile: () => {},
+  refreshProfile: () => { },
 })
 export const useProfile = () => useContext(ProfileContext)
 
 const nav = [
-  { section: 'Study', items: [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/subjects', label: 'Subjects', icon: BookOpen },
-    { to: '/flashcards', label: 'Flashcards', icon: Layers },
-    { to: '/quizzes', label: 'Quizzes', icon: HelpCircle },
-    { to: '/mock-exam', label: 'Mock Exams', icon: FileText },
-    { to: '/reviewers', label: 'Reviewers', icon: Highlighter },
-  ]},
-  { section: 'AI', items: [
-    { to: '/assistant', label: 'AI Assistant', icon: Sparkles },
-  ]},
-  { section: 'Motivation', items: [
-    { to: '/challenge', label: 'Daily Challenge', icon: Zap },
-    { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-    { to: '/progress', label: 'Progress', icon: TrendingUp },
-  ]},
-  { section: 'Account', items: [
-    { to: '/settings', label: 'Settings', icon: Settings },
-  ]},
+  {
+    section: 'Study', items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/subjects', label: 'Subjects', icon: BookOpen },
+      { to: '/flashcards', label: 'Flashcards', icon: Layers },
+      { to: '/quizzes', label: 'Quizzes', icon: HelpCircle },
+      { to: '/mock-exam', label: 'Mock Exams', icon: FileText },
+      { to: '/reviewers', label: 'Reviewers', icon: Highlighter },
+    ]
+  },
+  {
+    section: 'AI', items: [
+      { to: '/assistant', label: 'AI Assistant', icon: Sparkles },
+    ]
+  },
+  {
+    section: 'Motivation', items: [
+      { to: '/challenge', label: 'Daily Challenge', icon: Zap },
+      { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+      { to: '/progress', label: 'Progress', icon: TrendingUp },
+    ]
+  },
+  {
+    section: 'Account', items: [
+      { to: '/settings', label: 'Settings', icon: Settings },
+    ]
+  },
 ]
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -161,19 +169,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <ProfileContext.Provider value={{ profile, refreshProfile }}>
       <div className="flex h-screen overflow-hidden">
         {/* Desktop sidebar — shown from lg breakpoint up */}
-        <aside className="w-[264px] shrink-0 bg-white border-r border-slate-200 flex-col p-4 hidden lg:flex">
-          <div className="flex items-center gap-2.5 px-2 pb-5">
+        {/* Desktop sidebar — shown from lg breakpoint up */}
+        <aside className="w-[264px] shrink-0 bg-white border-r border-slate-200 flex-col p-4 hidden lg:flex overflow-hidden">
+          <div className="flex items-center gap-2.5 px-2 pb-5 shrink-0">
             <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-primary-600 to-accent grid place-items-center text-white font-bold">B</div>
             <span className="text-primary-600 font-display font-semibold text-lg">BrainForge <span className="">AI</span></span>
           </div>
 
-          <NavList />
+          <div className="flex-1 overflow-y-auto -mr-1 pr-1 min-h-0">
+            <NavList />
+          </div>
 
-          <div className="flex-1" />
-
-          <ThemeToggle />
-          <StreakCard />
-          <AccountRow />
+          <div className="shrink-0">
+            <ThemeToggle />
+            <StreakCard />
+            <AccountRow />
+          </div>
         </aside>
 
         {/* Mobile / tablet top bar — shown below lg */}

@@ -19,7 +19,7 @@ export default function Login() {
     setError('')
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined },
+      options: { redirectTo: `${window.location.origin}/` },
     })
     if (error) setError(error.message)
     // On success the browser redirects to Google, then back here already logged in.
