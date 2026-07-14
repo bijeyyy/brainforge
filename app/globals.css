@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@config "../tailwind.config.ts";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -171,6 +172,8 @@ h1, h2, h3 { @apply font-display; }
 
 /* ── Brand palette (Indigo primary / Violet accent) ─────────────── */
 @theme {
+  --color-primary: #4F46E5;
+  --color-accent: #7C3AED;
   --color-primary-50: #eef2ff;
   --color-primary-100: #e0e7ff;
   --color-primary-200: #c7d2fe;
@@ -182,6 +185,7 @@ h1, h2, h3 { @apply font-display; }
   --color-primary-800: #3730a3;
   --color-primary-900: #312e81;
 
+  --color-primary: #7C3AED;
   --color-accent-50: #f5f3ff;
   --color-accent-100: #ede9fe;
   --color-accent-200: #ddd6fe;
@@ -192,6 +196,10 @@ h1, h2, h3 { @apply font-display; }
   --color-accent-700: #6d28d9;
   --color-accent-800: #5b21b6;
   --color-accent-900: #4c1d95;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.06);
+  --radius-card: 16px;
 }
 
 @layer base {
@@ -205,3 +213,11 @@ h1, h2, h3 { @apply font-display; }
     @apply font-sans;
   }
 }
+
+.markdown-body p { margin: 0.4em 0; }
+.markdown-body ul, .markdown-body ol { margin: 0.4em 0; padding-left: 1.4em; }
+.markdown-body li { margin: 0.2em 0; }
+.markdown-body ul { list-style-type: disc; }
+.markdown-body ol { list-style-type: decimal; }
+.markdown-body strong { font-weight: 600; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 600; margin: 0.5em 0 0.3em; }

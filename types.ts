@@ -87,3 +87,12 @@ export type Reviewer = {
   content: string
   created_at: string
 }
+
+export type Note = {
+  id: string
+  user_id: string
+  title: string
+  content: string | null
+  is_pinned: boolean
+  created_at: string
+}
