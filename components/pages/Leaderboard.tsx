@@ -53,7 +53,7 @@ export default function Leaderboard() {
         {(['weekly', 'alltime'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`h-9 px-4 rounded-full text-sm font-semibold transition
-              ${tab === t ? 'bg-primary text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              ${tab === t ? 'bg-primary text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer'}`}>
             {t === 'weekly' ? 'This week' : 'All time'}
           </button>
         ))}

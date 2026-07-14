@@ -250,7 +250,7 @@ export default function AIAssistant() {
               <button
                 key={c.label}
                 onClick={() => send(c.prompt)}
-                className="bg-white border border-slate-200 rounded-xl p-3.5 text-left text-[13px] font-semibold hover:border-accent hover:text-accent transition"
+                className="bg-white border border-slate-200 rounded-xl p-3.5 text-left text-[13px] font-semibold hover:border-accent hover:text-accent transition cursor-pointer"
               >
                 <span className="text-lg block mb-1.5">{c.icon}</span>
                 {c.label}
@@ -316,7 +316,7 @@ export default function AIAssistant() {
         <button
           onClick={() => send()}
           disabled={busy}
-          className="w-9 h-9 rounded-xl bg-accent text-white grid place-items-center hover:brightness-110 disabled:opacity-50 transition"
+          className="w-9 h-9 rounded-xl bg-accent text-white grid place-items-center hover:brightness-110 disabled:opacity-50 transition cursor-pointer"
         >
           <Send size={15} />
         </button>

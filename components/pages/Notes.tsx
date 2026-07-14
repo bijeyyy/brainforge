@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Note } from '@/types'
 import { Btn, Card, Empty, PageHeader, Pill, Spinner } from '@/components/ui'
 import RichTextEditor from '@/components/RichTextEditor'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from "@/components/ui/alert-dialog"
 
 // Strips HTML tags for use in the card preview / plain-text contexts
 function stripHtml(html: string) {
@@ -13,6 +14,7 @@ function stripHtml(html: string) {
 }
 
 export default function Notes() {
+  const [noteToDelete, setNoteToDelete] = useState<Note | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [activeNote, setActiveNote] = useState<Note | null>(null)
@@ -66,10 +68,19 @@ export default function Notes() {
     loadNotes()
   }
 
-  async function deleteNote(note: Note) {
-    if (!confirm(`Delete "${note.title}"? This cannot be undone.`)) return
+  function requestDeleteNote(note: Note) {
+    setNoteToDelete(note)
+  }
+
+  async function confirmDeleteNote() {
+    if (!noteToDelete) 
+      return
+    const note = noteToDelete
+    setNoteToDelete(null)
+
     const { error } = await supabase.from('notes').delete().eq('id', note.id)
     if (error) { alert('Could not delete note: ' + error.message); return }
+
     setNotes(ns => ns.filter(n => n.id !== note.id))
     if (activeNote?.id === note.id) setActiveNote(null)
   }
@@ -108,7 +119,7 @@ export default function Notes() {
         </Card>
 
         <div className="flex gap-2 justify-end">
-          <Btn variant="ghost" onClick={() => deleteNote(activeNote)} className="text-slate-400 hover:text-red-500">
+          <Btn variant="ghost" onClick={() => requestDeleteNote(activeNote)} className="text-slate-400 hover:text-red-500">
             <Trash2 size={15} /> Delete
           </Btn>
           <Btn onClick={saveNote} disabled={saving}>{saving ? 'Saving…' : 'Save note'}</Btn>
@@ -162,7 +173,7 @@ export default function Notes() {
                 <Btn variant="ghost" onClick={() => togglePin(n)} title={n.is_pinned ? 'Unpin note' : 'Pin note'}>
                   <Star size={15} className={n.is_pinned ? 'text-amber-400 fill-amber-400' : 'text-slate-300'} />
                 </Btn>
-                <Btn variant="ghost" onClick={() => deleteNote(n)} title="Delete note" className="text-slate-300 hover:text-red-500">
+                <Btn variant="ghost" onClick={() => requestDeleteNote(n)} title="Delete note" className="text-slate-300 hover:text-red-500">
                   <Trash2 size={15} />
                 </Btn>
               </div>
@@ -170,6 +181,23 @@ export default function Notes() {
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!noteToDelete} onOpenChange={(open) => !open && setNoteToDelete(null)}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Delete "{noteToDelete?.title}"?</AlertDialogTitle>
+      <AlertDialogDescription>
+        This cannot be undone.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction onClick={confirmDeleteNote}>
+        Delete
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
     </div>
   )
 }

@@ -28,7 +28,7 @@ export function Btn({ children, onClick, variant = 'primary', className = '', di
       disabled={disabled}
       title={title}
       className={`inline-flex items-center justify-center gap-2 h-10 px-4 rounded-[10px] text-sm font-semibold
-        transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${styles[variant]} ${className}`}
+        transition active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${styles[variant]} ${className}`}
     >
       {children}
     </button>

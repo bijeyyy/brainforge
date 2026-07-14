@@ -18,6 +18,9 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: 'BrainForge AI',
   description: 'AI-powered review platform — study less, master more.',
+  icons: {
+    icon: '/logo.png'
+  }
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
