@@ -4,6 +4,10 @@
 //   npm install pdf-parse groq-sdk
 //   Add GROQ_API_KEY to your .env.local (never expose it to the client)
 //
+// This route accepts EITHER:
+//   - a "file" field (PDF upload, original flow), or
+//   - a "text" field (raw text, e.g. a Reviewer's already-extracted content)
+//
 // This route is intentionally simple (no auth/rate limiting) — add checks
 // appropriate for your app (e.g. verify the Supabase session) before shipping.
 
@@ -21,28 +25,34 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 // or check console.groq.com/docs/models for the current list).
 const MODEL = 'llama-3.3-70b-versatile'
 
-const MAX_PDF_TEXT_CHARS = 40_000 // keep prompt size sane for large PDFs
+const MAX_SOURCE_TEXT_CHARS = 40_000 // keep prompt size sane for large sources
 const MAX_CARDS = 40
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
+    const rawText = formData.get('text') as string | null
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file was uploaded.' }, { status: 400 })
-    }
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Only PDF files are supported.' }, { status: 400 })
-    }
+    let text: string
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const parsed = await pdfParse(buffer)
-    const text = parsed.text.trim().slice(0, MAX_PDF_TEXT_CHARS)
+    if (rawText && rawText.trim()) {
+      // Coming from a Reviewer's content — already plain text, no parsing needed.
+      text = rawText.trim().slice(0, MAX_SOURCE_TEXT_CHARS)
+    } else if (file) {
+      if (file.type !== 'application/pdf') {
+        return NextResponse.json({ error: 'Only PDF files are supported.' }, { status: 400 })
+      }
+      const buffer = Buffer.from(await file.arrayBuffer())
+      const parsed = await pdfParse(buffer)
+      text = parsed.text.trim().slice(0, MAX_SOURCE_TEXT_CHARS)
+    } else {
+      return NextResponse.json({ error: 'No file or text was provided.' }, { status: 400 })
+    }
 
     if (!text) {
       return NextResponse.json(
-        { error: 'Could not read any text from that PDF (it may be a scanned image without OCR).' },
+        { error: 'Could not read any usable text from that source (it may be a scanned image without OCR).' },
         { status: 422 }
       )
     }
@@ -87,7 +97,7 @@ export async function POST(req: NextRequest) {
 
     if (!cards.length) {
       return NextResponse.json(
-        { error: 'No usable flashcards could be generated from this PDF.' },
+        { error: 'No usable flashcards could be generated from this source.' },
         { status: 422 }
       )
     }

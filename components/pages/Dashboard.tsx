@@ -5,27 +5,27 @@ import Link from 'next/link'
 import { HelpCircle, Layers, Sparkles, FileText, Flame } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { addXp, daysUntil, levelFromXp, levelProgress, todayISO } from '@/lib/api'
-import { Attempt, Profile, Subject } from '@/types'
+import { Attempt, Profile, Reviewer } from '@/types'
 import { Btn, Card, Empty, PageHeader, Pill, ProgressBar, Spinner } from '@/components/ui'
 
 import { useProfile } from '@/components/AppShell'
 
 export default function Dashboard() {
   const { profile, refreshProfile } = useProfile()
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [reviewers, setReviewers] = useState<Reviewer[]>([])
   const [attempts, setAttempts] = useState<Attempt[]>([])
   const [xpToday, setXpToday] = useState(0)
   const [dueCards, setDueCards] = useState(0)
   const [loading, setLoading] = useState(true)
 
   async function load() {
-    const [{ data: subs }, { data: atts }, { data: xp }, { count }] = await Promise.all([
-      supabase.from('subjects').select('*').order('created_at'),
+    const [{ data: recentReviewers }, { data: atts }, { data: xp }, { count }] = await Promise.all([
+      supabase.from('reviewers').select('*').order('created_at', { ascending: false }).limit(4),
       supabase.from('quiz_attempts').select('*').order('created_at', { ascending: false }).limit(5),
       supabase.from('xp_events').select('amount, created_at').gte('created_at', todayISO()),
       supabase.from('flashcards').select('id', { count: 'exact', head: true }).lte('due_date', todayISO()),
     ])
-    setSubjects((subs as Subject[]) ?? [])
+    setReviewers((recentReviewers as Reviewer[]) ?? [])
     setAttempts((atts as Attempt[]) ?? [])
     setXpToday(((xp as { amount: number }[]) ?? []).reduce((s, e) => s + e.amount, 0))
     setDueCards(count ?? 0)
@@ -76,11 +76,11 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {subjects.length === 0 ? (
+      {reviewers.length === 0 ? (
         <Empty
-          icon="🚀" title="Welcome to BrainForge!"
-          sub="Start by creating your first subject - everything else (flashcards, quizzes, reviewers) build from there."
-          action={<Link href="/subjects"><Btn>Create your first subject</Btn></Link>} 
+          icon="📄" title="Welcome to BrainForge!"
+          sub="Start by uploading a PDF - AI will turn it into a reviewer, and you can generate flashcards and quizzes from it."
+          action={<Link href="/reviewers"><Btn>Upload your first PDF</Btn></Link>}
         />
       ) : (
         <>
@@ -98,23 +98,21 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-3 max-md:grid-cols-1 gap-4">
-            {/* Subjects */}
+            {/* Recent reviewers */}
             <Card className="p-5 col-span-2 max-md:col-span-1">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold">My subjects</h3>
-                <Link href="/subjects" className="text-sm text-primary font-semibold">View all →</Link>
+                <h3 className="font-semibold">Recent reviewers</h3>
+                <Link href="/reviewers" className="text-sm text-primary font-semibold">View all →</Link>
               </div>
-              {subjects.slice(0, 4).map(s => {
-                const pct = s.total_lessons ? Math.round((s.completed_lessons / s.total_lessons) * 100) : 0
-                return (
-                  <div key={s.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0">
-                    <span className="text-xl">{s.icon}</span>
-                    <span className="flex-1 text-sm font-medium">{s.name}</span>
-                    <ProgressBar value={pct} className="w-32 max-md:w-20" />
-                    <span className="text-xs text-slate-500 w-9 text-right">{pct}%</span>
-                  </div>
-                )
-              })}
+              {reviewers.map(r => (
+                <div key={r.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0">
+                  <span className="text-xl">📄</span>
+                  <span className="flex-1 text-sm font-medium truncate">{r.title}</span>
+                  <span className="text-xs text-slate-400">
+                    {new Date(r.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
             </Card>
 
             {/* Recent sessions */}

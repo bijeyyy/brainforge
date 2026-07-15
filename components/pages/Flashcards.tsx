@@ -38,17 +38,26 @@ export default function Flashcards() {
   const [graded, setGraded] = useState({ again: 0, good: 0, easy: 0 });
   const [done, setDone] = useState(false);
   const [deckToDelete, setDeckToDelete] = useState<Deck | null>(null);
+  const [availableReviewers, setAvailableReviewers] = useState<{ id: string; title: string }[]>([]);
+  const [selectedReviewerId, setSelectedReviewerId] = useState<string>("");
+
+  async function loadReviewers() {
+    const { data } = await supabase.from("reviewers").select("id, title").order("title");
+    setAvailableReviewers(data ?? []);
+  }
 
   async function loadDecks() {
     const { data } = await supabase
       .from("flashcard_decks")
-      .select("*, flashcards(count)")
+      .select("*, flashcards(count), reviewers(title)")
       .order("created_at");
     setDecks((data as Deck[]) ?? []);
     setLoading(false);
   }
+
   useEffect(() => {
     loadDecks();
+    loadReviewers();
   }, []);
 
   // ── Create deck + manage cards ──
@@ -63,23 +72,99 @@ export default function Flashcards() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfProgress, setPdfProgress] = useState<string | null>(null);
+  const [generatingFromReviewer, setGeneratingFromReviewer] = useState(false);
 
   async function createDeck() {
     if (!newDeckTitle.trim()) return;
+    const reviewerId = selectedReviewerId;
     const { data: u } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("flashcard_decks")
-      .insert({ user_id: u.user!.id, title: newDeckTitle.trim() })
+      .insert({
+        user_id: u.user!.id,
+        title: newDeckTitle.trim(),
+        reviewer_id: reviewerId || null,
+      })
       .select()
       .single();
     if (error) {
       alert("Could not create deck: " + error.message);
       return;
     }
+    const deck = data as Deck;
     setNewDeckTitle("");
+    setSelectedReviewerId("");
     setShowNewDeck(false);
     await loadDecks();
-    openEditor(data as Deck); // jump straight into adding cards
+
+    if (reviewerId) {
+      // Auto-generate cards from the linked reviewer's content instead of
+      // making the user add them manually.
+      await generateCardsFromReviewer(deck, reviewerId);
+    } else {
+      openEditor(deck); // jump straight into adding cards manually
+    }
+  }
+
+  async function generateCardsFromReviewer(deck: Deck, reviewerId: string) {
+    setPdfError(null);
+    setEditorCards([]);
+    setEditingDeck(deck); // open the editor right away so progress is visible
+    setGeneratingFromReviewer(true);
+    try {
+      const { data: reviewer, error: revError } = await supabase
+        .from("reviewers")
+        .select("content")
+        .eq("id", reviewerId)
+        .single();
+      if (revError || !reviewer?.content) {
+        throw new Error("Could not load the linked reviewer's content.");
+      }
+
+      const formData = new FormData();
+      formData.append("text", reviewer.content);
+
+      const res = await fetch("/api/generate-flashcards", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Request failed (${res.status})`);
+      }
+
+      const { cards: generated } = (await res.json()) as {
+        cards: { front: string; back: string }[];
+      };
+      if (!generated?.length) {
+        throw new Error(
+          "The AI could not generate flashcards from this reviewer.",
+        );
+      }
+
+      const { error } = await supabase.from("flashcards").insert(
+        generated.map((c) => ({
+          deck_id: deck.id,
+          front: c.front.trim(),
+          back: c.back.trim(),
+        })),
+      );
+      if (error) throw new Error(error.message);
+
+      const { data } = await supabase
+        .from("flashcards")
+        .select("*")
+        .eq("deck_id", deck.id)
+        .order("created_at");
+      setEditorCards((data as Flashcard[]) ?? []);
+    } catch (err: any) {
+      setPdfError(
+        err.message ??
+          "Something went wrong generating flashcards from the linked reviewer.",
+      );
+    } finally {
+      setGeneratingFromReviewer(false);
+    }
   }
 
   async function openEditor(deck: Deck) {
@@ -286,6 +371,16 @@ export default function Flashcards() {
             {editorCards.length} card{editorCards.length === 1 ? "" : "s"}
           </span>
         </div>
+
+        {generatingFromReviewer && (
+          <Card className="p-4 mb-5 flex items-center gap-3 text-sm text-primary">
+            <Loader2 size={16} className="animate-spin" />
+            ✨ Generating flashcards from linked reviewer…
+          </Card>
+        )}
+        {pdfError && !generatingFromReviewer && editorCards.length === 0 && (
+          <Card className="p-4 mb-5 text-sm text-red-500">{pdfError}</Card>
+        )}
 
         <Card className="p-5 mb-5">
           <h3 className="font-semibold mb-3">Generate from a PDF</h3>
@@ -515,6 +610,18 @@ export default function Flashcards() {
             onChange={(e) => setNewDeckTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && createDeck()}
           />
+          <select
+            className="h-10 px-3 rounded-[10px] border border-slate-200 text-sm"
+            value={selectedReviewerId}
+            onChange={(e) => setSelectedReviewerId(e.target.value)}
+          >
+            <option value="">No linked reviewer</option>
+            {availableReviewers.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}
+              </option>
+            ))}
+          </select>
           <Btn onClick={createDeck}>Create deck</Btn>
         </Card>
       )}
@@ -532,9 +639,14 @@ export default function Flashcards() {
                 🃏
               </div>
               <h3 className="font-semibold">{d.title}</h3>
-              <p className="text-xs text-slate-500 mb-3">
+              <p className="text-xs text-slate-500 mb-1">
                 {d.flashcards?.[0]?.count ?? 0} cards
               </p>
+              {d.reviewers?.title && (
+                <p className="text-[11px] text-primary mb-2 truncate">
+                  📎 {d.reviewers.title}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Btn
                   className="flex-1"

@@ -10,21 +10,12 @@ export interface Profile {
   exam_date: string | null
 }
 
-export interface Subject {
-  id: string
-  user_id: string
-  name: string
-  icon: string
-  difficulty: 'Easy' | 'Medium' | 'Hard'
-  total_lessons: number
-  completed_lessons: number
-}
-
 export interface Deck {
   id: string
   subject_id: string | null
   title: string
   flashcards?: { count: number }[]
+  reviewers?: { title: string } | null
 }
 
 export interface Flashcard {
@@ -45,6 +36,7 @@ export interface Quiz {
   duration_minutes: number
   passing_percent: number
   questions?: { count: number }[]
+  reviewers?: { title: string } | null
 }
 
 export interface Question {

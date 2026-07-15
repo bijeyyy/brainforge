@@ -40,18 +40,27 @@ export default function Quizzes() {
   const [finished, setFinished] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [quizToDelete, setQuizToDelete] = useState<Quiz | null>(null);
+  const [availableReviewers, setAvailableReviewers] = useState<{ id: string; title: string }[]>([]);
+  const [selectedReviewerId, setSelectedReviewerId] = useState<string>("");
+
+  async function loadReviewers() {
+    const { data } = await supabase.from("reviewers").select("id, title").order("title");
+    setAvailableReviewers(data ?? []);
+  }
 
   async function loadQuizzes() {
     const { data } = await supabase
       .from("quizzes")
-      .select("*, questions(count)")
+      .select("*, questions(count), reviewers(title)")
       .eq("is_exam", false)
       .order("created_at");
     setQuizzes((data as Quiz[]) ?? []);
     setLoading(false);
   }
+
   useEffect(() => {
     loadQuizzes();
+    loadReviewers();
   }, []);
 
   // ── Create + build your own quiz ──
@@ -63,23 +72,104 @@ export default function Quizzes() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfProgress, setPdfProgress] = useState<string | null>(null);
+  const [generatingFromReviewer, setGeneratingFromReviewer] = useState(false);
 
   async function createQuiz() {
     if (!newTitle.trim()) return;
+    const reviewerId = selectedReviewerId;
     const { data: u } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("quizzes")
-      .insert({ user_id: u.user!.id, title: newTitle.trim(), is_exam: false })
+      .insert({
+        user_id: u.user!.id,
+        title: newTitle.trim(),
+        is_exam: false,
+        reviewer_id: reviewerId || null,
+      })
       .select()
       .single();
     if (error) {
       alert("Could not create quiz: " + error.message);
       return;
     }
+    const quiz = data as Quiz;
     setNewTitle("");
+    setSelectedReviewerId("");
     setShowNew(false);
     await loadQuizzes();
-    setBuilding(data as Quiz); // go straight to adding questions
+
+    if (reviewerId) {
+      // Auto-generate questions from the linked reviewer's content instead
+      // of making the user build the quiz manually.
+      await generateQuestionsFromReviewer(quiz, reviewerId);
+    } else {
+      setBuilding(quiz); // go straight to adding questions manually
+    }
+  }
+
+  async function generateQuestionsFromReviewer(quiz: Quiz, reviewerId: string) {
+    setPdfError(null);
+    setGeneratingFromReviewer(true);
+    try {
+      const { data: reviewer, error: revError } = await supabase
+        .from("reviewers")
+        .select("content")
+        .eq("id", reviewerId)
+        .single();
+      if (revError || !reviewer?.content) {
+        throw new Error("Could not load the linked reviewer's content.");
+      }
+
+      const formData = new FormData();
+      formData.append("text", reviewer.content);
+
+      const res = await fetch("/api/generate-quiz", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Request failed (${res.status})`);
+      }
+
+      const { questions: generated } = (await res.json()) as {
+        title: string;
+        questions: {
+          prompt: string;
+          options: string[];
+          correct_index: number;
+          explanation: string | null;
+          topic: string | null;
+        }[];
+      };
+      if (!generated?.length) {
+        throw new Error(
+          "The AI could not generate questions from this reviewer.",
+        );
+      }
+
+      const { error: qError } = await supabase.from("questions").insert(
+        generated.map((q) => ({
+          quiz_id: quiz.id,
+          prompt: q.prompt,
+          options: q.options,
+          correct_index: q.correct_index,
+          explanation: q.explanation,
+          topic: q.topic,
+        })),
+      );
+      if (qError) throw new Error(qError.message);
+
+      await loadQuizzes();
+      setBuilding(quiz); // open builder so they can review/edit the generated questions
+    } catch (err: any) {
+      setPdfError(
+        err.message ??
+          "Something went wrong generating the quiz from the linked reviewer.",
+      );
+    } finally {
+      setGeneratingFromReviewer(false);
+    }
   }
 
   function requestDeleteQuiz(quiz: Quiz) {
@@ -146,7 +236,12 @@ export default function Quizzes() {
       const { data: u } = await supabase.auth.getUser();
       const { data: quiz, error: quizError } = await supabase
         .from("quizzes")
-        .insert({ user_id: u.user!.id, title, is_exam: false })
+        .insert({
+          user_id: u.user!.id,
+          title,
+          is_exam: false,
+          reviewer_id: selectedReviewerId || null,
+        })
         .select()
         .single();
       if (quizError) throw new Error(quizError.message);
@@ -355,6 +450,16 @@ export default function Quizzes() {
           </Btn>
         }
       />
+      {generatingFromReviewer && (
+        <Card className="p-4 mb-5 flex items-center gap-3 text-sm text-primary">
+          <Loader2 size={16} className="animate-spin" />
+          ✨ Generating quiz questions from linked reviewer…
+        </Card>
+      )}
+      {pdfError && !generatingFromReviewer && (
+        <Card className="p-4 mb-5 text-sm text-red-500">{pdfError}</Card>
+      )}
+
       {showNew && (
         <Card className="p-4 mb-5 flex gap-3 items-center flex-wrap">
           <input
@@ -364,6 +469,18 @@ export default function Quizzes() {
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && createQuiz()}
           />
+          <select
+            className="h-10 px-3 rounded-[10px] border border-slate-200 text-sm"
+            value={selectedReviewerId}
+            onChange={(e) => setSelectedReviewerId(e.target.value)}
+          >
+            <option value="">No linked reviewer</option>
+            {availableReviewers.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}
+              </option>
+            ))}
+          </select>
           <Btn onClick={createQuiz}>Create quiz</Btn>
         </Card>
       )}
@@ -374,28 +491,42 @@ export default function Quizzes() {
           Upload your notes or a reviewer and the AI will turn them into a
           multiple-choice quiz automatically.
         </p>
-        <label
-          className={`inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-[10px] border border-dashed text-sm cursor-pointer transition
-          ${uploadingPdf ? "border-slate-200 text-slate-400 cursor-not-allowed" : "border-primary/40 text-primary hover:bg-primary-50"}`}
-        >
-          {uploadingPdf ? (
-            <Loader2 size={15} className="animate-spin" />
-          ) : (
-            <FileUp size={15} />
-          )}
-          {uploadingPdf ? (pdfProgress ?? "Working…") : "Choose a PDF"}
-          <input
-            type="file"
-            accept="application/pdf"
-            disabled={uploadingPdf}
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) handlePdfUpload(file);
-            }}
-          />
-        </label>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label
+            className={`inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-[10px] border border-dashed text-sm cursor-pointer transition
+            ${uploadingPdf ? "border-slate-200 text-slate-400 cursor-not-allowed" : "border-primary/40 text-primary hover:bg-primary-50"}`}
+          >
+            {uploadingPdf ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <FileUp size={15} />
+            )}
+            {uploadingPdf ? (pdfProgress ?? "Working…") : "Choose a PDF"}
+            <input
+              type="file"
+              accept="application/pdf"
+              disabled={uploadingPdf}
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) handlePdfUpload(file);
+              }}
+            />
+          </label>
+          <select
+            className="h-10 px-3 rounded-[10px] border border-slate-200 text-sm"
+            value={selectedReviewerId}
+            onChange={(e) => setSelectedReviewerId(e.target.value)}
+          >
+            <option value="">No linked reviewer</option>
+            {availableReviewers.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}
+              </option>
+            ))}
+          </select>
+        </div>
         {pdfError && <p className="text-xs text-red-500 mt-2">{pdfError}</p>}
       </Card>
 
@@ -416,10 +547,15 @@ export default function Quizzes() {
                 <Pill tone="indigo">Practice</Pill>
               </div>
               <h3 className="font-semibold">{qz.title}</h3>
-              <p className="text-xs text-slate-500 mb-3">
+              <p className="text-xs text-slate-500 mb-1">
                 {qz.questions?.[0]?.count ?? 0} questions · ~
                 {qz.duration_minutes} min
               </p>
+              {qz.reviewers?.title && (
+                <p className="text-[11px] text-primary mb-2 truncate">
+                  📎 {qz.reviewers.title}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Btn
                   className="flex-1"
