@@ -99,9 +99,20 @@ function getSupabaseAdmin() {
 // ---- Rate limit check + increment (daily cap + per-minute throttle) ----
 // Uses the ai_usage table (unique on user_id + usage_date), same as the edge function.
 type RateLimitResult =
-  | { allowed: true }
-  | { allowed: false; reason: "daily"; resetAt: Date }
-  | { allowed: false; reason: "minute"; retryAfterSeconds: number };
+  | { 
+      allowed: true;
+      remaining: number; 
+    }
+  | { 
+      allowed: false; 
+      reason: "daily"; 
+      resetAt: Date 
+    }
+  | { 
+      allowed: false; 
+      reason: "minute"; 
+      retryAfterSeconds: number 
+    };
 
 async function checkAndConsumeRateLimit(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -135,7 +146,10 @@ async function checkAndConsumeRateLimit(
     console.log("INSERT DATA:", data);
     console.log("INSERT ERROR:", error);
 
-    return { allowed: true };
+    return { 
+        allowed: true,
+        remaining: DAILY_LIMIT - 1, 
+      };
   }
 
   if (usage.request_count >= DAILY_LIMIT) {
@@ -178,7 +192,10 @@ async function checkAndConsumeRateLimit(
     })
     .eq("id", usage.id);
 
-  return { allowed: true };
+  return { 
+      allowed: true,
+      remaining: DAILY_LIMIT - (usage.request_count + 1), 
+    };
 }
 
 async function callOpenRouter(
@@ -362,6 +379,7 @@ export async function POST(req: Request) {
 
     return Response.json({
       structured: safeParseStructured(output),
+      remaining: rateLimit.remaining,
     });
   } catch (error: any) {
     console.error("AI ROUTE ERROR:", error);

@@ -369,6 +369,7 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -423,6 +424,9 @@ export default function AIAssistant() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (data.remaining !== undefined) {
+        setRemaining(data.remaining);
+      }
       if (!res.ok || data.error) {
         // Show the REAL error from the server so problems are easy to diagnose
         structured = {
@@ -570,6 +574,11 @@ export default function AIAssistant() {
         )}
       </div>
 
+      {remaining !== null && (
+        <div className="text-center text-xs text-slate-500 mb-2">
+          ✨ {remaining} AI chats remaining today
+          </div>
+      )}
       <div className="sticky md:bottom-3 bottom-12 mt-2 flex items-center gap-2.5 bg-white border border-slate-200 rounded-2xl p-2.5 shadow-lift z-10">
         <input
           ref={inputRef}
