@@ -298,11 +298,7 @@ export default function AIAssistant() {
         // Show the REAL error from the server so problems are easy to diagnose
         structured = {
           type: 'text',
-          text:
-            `⚠️ AI route error (HTTP ${res.status}):\n${data.error ?? 'Unknown error — no message returned.'}\n\n` +
-            'Checklist: (1) app/api/ai-chat/route.ts contains your provider code, ' +
-            '(2) the matching key (e.g. GROQ_API_KEY) is in .env.local, ' +
-            '(3) you restarted the dev server after editing .env.local.',
+          text: data.error ?? 'Something went wrong. Please try again later.',
         }
       } else if (data.structured) {
         structured = data.structured as Structured

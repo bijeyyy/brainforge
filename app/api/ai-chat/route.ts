@@ -102,8 +102,29 @@ export async function POST(req: Request) {
 
     const data = await res.json()
     if (!res.ok) {
-      return Response.json({ error: data.error?.message ?? 'Groq request failed' }, { status: 500 })
-    }
+      const errorMessage = (data.error?.message ?? '').toLowerCase();
+  
+      if (
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('tokens per day') ||
+        errorMessage.includes('tpd')
+      ) {
+        return Response.json(
+          {
+            error:
+            '🚫 AI Limit Reached\n\nBrainForge AI has reached its daily usage limit.\nPlease try again later.',
+          },
+          { status: 429 }
+        );
+      }
+
+  return Response.json(
+    {
+      error: 'Unable to process your request at the moment.',
+    },
+    { status: res.status }
+  );
+}
 
     const text: string = data.choices?.[0]?.message?.content ?? '{"type":"text","text":"Sorry, I could not generate a response."}'
     return Response.json({ structured: safeParseStructured(text) })
