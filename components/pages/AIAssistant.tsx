@@ -43,10 +43,10 @@ interface Msg {
 }
 
 const capabilities = [
-  { icon: '📄', label: 'Generate Reviewer', prompt: 'Generate a structured reviewer outline for Basic Calculus (limits, continuity, derivatives).' },
-  { icon: '❓', label: 'Generate Quiz', prompt: 'Create a 5-question multiple choice quiz on cell division, with answers and explanations.' },
-  { icon: '🃏', label: 'Generate Flashcards', prompt: 'Create 8 flashcards (front/back) about the parts of a cell.' },
-  { icon: '🧒', label: "Explain Like I'm 10", prompt: "Explain what a mathematical limit is like I'm 10 years old." },
+  { icon: '📄', label: 'Generate Reviewer', template: 'Generate a structured reviewer outline for [your topic/subject].' },
+  { icon: '❓', label: 'Generate Quiz', template: 'Create a 5-question multiple choice quiz on [your topic/subject], with answers and explanations.' },
+  { icon: '🃏', label: 'Generate Flashcards', template: 'Create 8 flashcards (front/back) about [your topic/subject].' },
+  { icon: '🧒', label: "Explain Like I'm 10", template: "Explain [your topic/subject] like I'm 10 years old." },
 ]
 
 // ---------- Tiny inline markdown renderer (bold, bullets, numbered lists, paragraphs) ----------
@@ -261,6 +261,19 @@ export default function AIAssistant() {
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function fillTemplate(template: string) {
+    setInput(template)
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      const start = template.indexOf('[')
+      const end = template.indexOf(']') + 1
+      if (start !== -1 && end !== -1) el.setSelectionRange(start, end)
+    })
+  }
 
   async function send(text?: string) {
     const content = (text ?? input).trim()
@@ -369,7 +382,7 @@ export default function AIAssistant() {
           <p className="text-sm text-slate-500 mb-6">Generate reviewers, quizzes, flashcards — or just ask anything.</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
             {capabilities.map(c => (
-              <button key={c.label} onClick={() => send(c.prompt)}
+              <button key={c.label} onClick={() => fillTemplate(c.template)}
                 className="bg-white border border-slate-200 rounded-xl p-3.5 text-left text-[13px] font-semibold hover:border-accent hover:text-accent transition">
                 <span className="text-lg block mb-1.5">{c.icon}</span>{c.label}
               </button>
@@ -402,6 +415,7 @@ export default function AIAssistant() {
 
       <div className="sticky md:bottom-3 bottom-12 mt-2 flex items-center gap-2.5 bg-white border border-slate-200 rounded-2xl p-2.5 shadow-lift z-10">
         <input
+          ref={inputRef}
           className="flex-1 outline-none text-sm px-2 py-4"
           placeholder="Ask anything… (Enter to send)"
           value={input}
