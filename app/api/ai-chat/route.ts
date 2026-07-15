@@ -15,17 +15,6 @@ About the creator of BrainForge AI:
 - Skills: Front-End Web Development, UI/UX design, and AI integration
 `
 
-// ✏️ EDIT THIS BLOCK to update partner info — the AI will use it
-// whenever someone asks if the creator has a girlfriend/partner.
-const PARTNER_INFO = `
-About the creator's girlfriend/partner:
-- Name: Alfea Robien Almirañez
-- Address: Prinza, Calamba, Laguna
-- Age: 18 years old
-- School: Lyceum of Alabang
-- Course: Psychology
-`
-
 const SYSTEM_PROMPT =
   'You are BrainForge AI, a friendly study assistant for students and board-exam reviewees. ' +
   'Explain clearly and concisely. Keep answers focused on studying.\n\n' +
@@ -44,16 +33,6 @@ const SYSTEM_PROMPT =
   'React, TypeScript, TailwindCSS, Supabase, at Groq for AI — solid stack di ba?"\n' +
   'Do NOT dump the entire info block unless the user explicitly asks for everything/full info about the creator. ' +
   'Match the user\'s language/tone (Taglish if they\'re Taglish).\n\n' +
-
-  'If the user asks about the creator\'s girlfriend/partner (whether the creator has one, who she is, or specific ' +
-  'details like her name, age, school, course, address), you have this reference info:\n' + PARTNER_INFO + '\n' +
-  'Same rule: answer ONLY the specific detail(s) asked, but with the same warm, conversational, slightly playful ' +
-  'tone. For example:\n' +
-  '  - "may jowa ba si Bob?" → something like "Oo, may girlfriend siya! Si Alfea Robien Almirañez, 18 years old."\n' +
-  '  - "anong course ni Alfea?" → something like "Si Alfea, girlfriend ni Bob, ay nag-aaral ng Psychology sa ' +
-  'Lyceum of Alabang."\n' +
-  'Only give the full info if explicitly asked for everything. Keep it light and natural, never robotic or ' +
-  'list-like.\n\n' +
 
   'You also act as an interactive study coach, not just a content generator. Follow these behaviors ' +
   'depending on what the user is trying to do:\n' +
@@ -85,7 +64,7 @@ const SYSTEM_PROMPT =
   '{"type":"text","text":string}\n\n' +
   'Use "quiz" only when explicitly asked for a quiz, test, or exam. Use "flashcards" only when explicitly asked for flashcards. ' +
   'Use "reviewer" for outlines, summaries, or study guides. Use "text" for everything else — explanations, mnemonics, ' +
-  'the creator/partner questions, or plain chat. The "text" field/content can use markdown formatting freely. Output raw JSON only, nothing else.'
+  'the creator question, or plain chat. The "text" field/content can use markdown formatting freely. Output raw JSON only, nothing else.'
 
 const MODEL = 'llama-3.3-70b-versatile'
 

@@ -1,11 +1,46 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { RotateCcw, Send, Sparkles } from 'lucide-react'
+import { RotateCcw, Send, Sparkles, Check, X, RefreshCw } from 'lucide-react'
 import { Card } from '@/components/ui'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 
-interface Msg { role: 'user' | 'assistant'; content: string }
+// ---------- Types matching the shapes the API can return ----------
+interface QuizQuestion {
+  prompt: string
+  options: string[]
+  correct_index: number
+  explanation: string
+  topic: string
+}
+interface QuizPayload {
+  type: 'quiz'
+  title: string
+  duration_minutes: number
+  passing_percent: number
+  questions: QuizQuestion[]
+}
+interface FlashcardsPayload {
+  type: 'flashcards'
+  title: string
+  cards: { front: string; back: string }[]
+}
+interface ReviewerPayload {
+  type: 'reviewer'
+  title: string
+  content: string
+}
+interface TextPayload {
+  type: 'text'
+  text: string
+}
+type Structured = QuizPayload | FlashcardsPayload | ReviewerPayload | TextPayload
+
+interface Msg {
+  role: 'user' | 'assistant'
+  content?: string // used for user messages (plain text)
+  structured?: Structured // used for assistant messages
+}
 
 const capabilities = [
   { icon: '📄', label: 'Generate Reviewer', prompt: 'Generate a structured reviewer outline for Basic Calculus (limits, continuity, derivatives).' },
@@ -13,6 +48,212 @@ const capabilities = [
   { icon: '🃏', label: 'Generate Flashcards', prompt: 'Create 8 flashcards (front/back) about the parts of a cell.' },
   { icon: '🧒', label: "Explain Like I'm 10", prompt: "Explain what a mathematical limit is like I'm 10 years old." },
 ]
+
+// ---------- Tiny inline markdown renderer (bold, bullets, numbered lists, paragraphs) ----------
+function renderInline(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>
+  )
+}
+
+function Markdown({ text }: { text: string }) {
+  const lines = text.split('\n')
+  const blocks: React.ReactNode[] = []
+  let i = 0
+  let key = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s+/, ''))
+        i++
+      }
+      blocks.push(
+        <ul key={key++} className="list-disc pl-5 space-y-1 my-2">
+          {items.map((it, idx) => <li key={idx}>{renderInline(it)}</li>)}
+        </ul>
+      )
+      continue
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, ''))
+        i++
+      }
+      blocks.push(
+        <ol key={key++} className="list-decimal pl-5 space-y-1 my-2">
+          {items.map((it, idx) => <li key={idx}>{renderInline(it)}</li>)}
+        </ol>
+      )
+      continue
+    }
+
+    if (/^#{1,3}\s+/.test(line)) {
+      const level = line.match(/^#+/)?.[0].length ?? 1
+      const label = line.replace(/^#{1,3}\s+/, '')
+      const cls = level === 1 ? 'text-base font-bold mt-3 mb-1.5' : level === 2 ? 'text-[15px] font-bold mt-3 mb-1' : 'text-sm font-semibold mt-2 mb-1'
+      blocks.push(<div key={key++} className={cls}>{renderInline(label)}</div>)
+      i++
+      continue
+    }
+
+    if (line.trim() === '') { i++; continue }
+
+    const paraLines: string[] = []
+    while (i < lines.length && lines[i].trim() !== '' && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+\.\s+/.test(lines[i]) && !/^#{1,3}\s+/.test(lines[i])) {
+      paraLines.push(lines[i])
+      i++
+    }
+    blocks.push(<p key={key++} className="my-1.5 leading-relaxed">{renderInline(paraLines.join(' '))}</p>)
+  }
+
+  return <>{blocks}</>
+}
+
+// ---------- Reviewer ----------
+function ReviewerView({ data }: { data: ReviewerPayload }) {
+  return (
+    <div>
+      <h3 className="text-[15px] font-bold mb-2 flex items-center gap-1.5">📄 {data.title}</h3>
+      <div className="text-sm text-slate-700">
+        <Markdown text={data.content} />
+      </div>
+    </div>
+  )
+}
+
+// ---------- Flashcards ----------
+function FlashcardsView({ data }: { data: FlashcardsPayload }) {
+  const [flipped, setFlipped] = useState<Set<number>>(new Set())
+  const toggle = (idx: number) => setFlipped(s => {
+    const next = new Set(s)
+    next.has(idx) ? next.delete(idx) : next.add(idx)
+    return next
+  })
+
+  return (
+    <div>
+      <h3 className="text-[15px] font-bold mb-3 flex items-center gap-1.5">🃏 {data.title}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {data.cards.map((c, idx) => {
+          const isFlipped = flipped.has(idx)
+          return (
+            <button
+              key={idx}
+              onClick={() => toggle(idx)}
+              className={`text-left rounded-xl border p-4 text-sm min-h-[92px] flex flex-col justify-center transition
+                ${isFlipped ? 'bg-primary-50 border-primary-200' : 'bg-white border-slate-200 hover:border-accent'}`}
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
+                {isFlipped ? 'Answer' : `Card ${idx + 1}`}
+              </span>
+              <span className="font-medium text-slate-800">{isFlipped ? c.back : c.front}</span>
+              <span className="text-[11px] text-slate-400 mt-1.5">Tap to {isFlipped ? 'flip back' : 'reveal'}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------- Quiz ----------
+function QuizView({ data }: { data: QuizPayload }) {
+  const [answers, setAnswers] = useState<Record<number, number>>({})
+
+  const choose = (qIdx: number, optIdx: number) => {
+    if (answers[qIdx] !== undefined) return // lock after first pick
+    setAnswers(a => ({ ...a, [qIdx]: optIdx }))
+  }
+
+  const answeredCount = Object.keys(answers).length
+  const correctCount = data.questions.reduce((acc, q, i) => acc + (answers[i] === q.correct_index ? 1 : 0), 0)
+  const allAnswered = answeredCount === data.questions.length
+  const scorePercent = data.questions.length ? Math.round((correctCount / data.questions.length) * 100) : 0
+  const passed = scorePercent >= data.passing_percent
+
+  const retake = () => setAnswers({})
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-[15px] font-bold flex items-center gap-1.5">❓ {data.title}</h3>
+        {allAnswered && (
+          <button onClick={retake} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-accent">
+            <RefreshCw size={12} /> Retake
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-slate-400 mb-3">
+        {data.duration_minutes} min · Passing: {data.passing_percent}%
+      </p>
+
+      <div className="space-y-4">
+        {data.questions.map((q, qIdx) => {
+          const chosen = answers[qIdx]
+          const isAnswered = chosen !== undefined
+          return (
+            <div key={qIdx} className="border border-slate-200 rounded-xl p-3.5">
+              <p className="text-sm font-semibold mb-2.5">{qIdx + 1}. {q.prompt}</p>
+              <div className="space-y-1.5">
+                {q.options.map((opt, optIdx) => {
+                  let cls = 'bg-white border-slate-200 hover:border-accent'
+                  if (isAnswered) {
+                    if (optIdx === q.correct_index) cls = 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    else if (optIdx === chosen) cls = 'bg-red-50 border-red-300 text-red-700'
+                    else cls = 'bg-white border-slate-200 opacity-60'
+                  }
+                  return (
+                    <button
+                      key={optIdx}
+                      onClick={() => choose(qIdx, optIdx)}
+                      className={`w-full text-left text-sm px-3 py-2 rounded-lg border flex items-center justify-between transition ${cls}`}
+                    >
+                      <span>{opt}</span>
+                      {isAnswered && optIdx === q.correct_index && <Check size={14} className="text-emerald-600 shrink-0" />}
+                      {isAnswered && optIdx === chosen && optIdx !== q.correct_index && <X size={14} className="text-red-500 shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
+              {isAnswered && (
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  <span className="font-semibold text-slate-600">Explanation: </span>{q.explanation}
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {allAnswered && (
+        <div className={`mt-4 rounded-xl p-3.5 text-sm font-semibold ${passed ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+          Score: {correctCount}/{data.questions.length} ({scorePercent}%) — {passed ? 'Passed 🎉' : 'Not yet — try again'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Dispatcher ----------
+function StructuredView({ data }: { data: Structured }) {
+  switch (data.type) {
+    case 'quiz': return <QuizView data={data} />
+    case 'flashcards': return <FlashcardsView data={data} />
+    case 'reviewer': return <ReviewerView data={data} />
+    case 'text':
+    default:
+      return <div className="text-sm text-slate-700"><Markdown text={data.text} /></div>
+  }
+}
 
 export default function AIAssistant() {
   const [messages, setMessages] = useState<Msg[]>([])
@@ -30,30 +271,40 @@ export default function AIAssistant() {
     setBusy(true)
 
     // Calls the built-in Next.js API route (app/api/ai-chat/route.ts)
-    let reply: string
+    let structured: Structured
     try {
       const res = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.content })) }),
+        body: JSON.stringify({
+          messages: next.map(m => ({ role: m.role, content: m.content ?? '' })),
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.error) {
         // Show the REAL error from the server so problems are easy to diagnose
-        reply =
-          `⚠️ AI route error (HTTP ${res.status}):\n${data.error ?? 'Unknown error — no message returned.'}\n\n` +
-          'Checklist: (1) app/api/ai-chat/route.ts contains your provider code, ' +
-          '(2) the matching key (e.g. GEMINI_API_KEY) is in .env.local, ' +
-          '(3) you restarted the dev server after editing .env.local.'
+        structured = {
+          type: 'text',
+          text:
+            `⚠️ AI route error (HTTP ${res.status}):\n${data.error ?? 'Unknown error — no message returned.'}\n\n` +
+            'Checklist: (1) app/api/ai-chat/route.ts contains your provider code, ' +
+            '(2) the matching key (e.g. GROQ_API_KEY) is in .env.local, ' +
+            '(3) you restarted the dev server after editing .env.local.',
+        }
+      } else if (data.structured) {
+        structured = data.structured as Structured
       } else {
-        reply = data.text ?? 'Sorry, I could not generate a response.'
+        structured = { type: 'text', text: 'Sorry, I could not generate a response.' }
       }
     } catch (err) {
-      reply =
-        `⚠️ Could not reach /api/ai-chat at all: ${String(err)}\n\n` +
-        'This usually means the route file is missing — confirm the file exists at exactly app/api/ai-chat/route.ts, then restart the dev server.'
+      structured = {
+        type: 'text',
+        text:
+          `⚠️ Could not reach /api/ai-chat at all: ${String(err)}\n\n` +
+          'This usually means the route file is missing — confirm the file exists at exactly app/api/ai-chat/route.ts, then restart the dev server.',
+      }
     }
-    setMessages(m => [...m, { role: 'assistant', content: reply }])
+    setMessages(m => [...m, { role: 'assistant', structured }])
     setBusy(false)
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50)
   }
@@ -135,9 +386,9 @@ export default function AIAssistant() {
                 <Sparkles size={14} />
               </div>
             )}
-            <div className={`max-w-[92%] sm:max-w-[82%] lg:max-w-[78%] px-4 py-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed
-              ${m.role === 'user' ? 'bg-primary-50 border border-primary-100' : 'bg-white border border-slate-200'}`}>
-              {m.content}
+            <div className={`max-w-[92%] sm:max-w-[82%] lg:max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed
+              ${m.role === 'user' ? 'bg-primary-50 border border-primary-100 whitespace-pre-wrap' : 'bg-white border border-slate-200'}`}>
+              {m.role === 'user' ? m.content : m.structured && <StructuredView data={m.structured} />}
             </div>
           </div>
         ))}
