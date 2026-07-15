@@ -1,9 +1,7 @@
-// AI provider: GROQ (free tier) — https://console.groq.com/keys
-// .env.local:   GROQ_API_KEY=gsk_your-key-here
-// If the model is ever retired, pick a current one at https://console.groq.com/docs/models
+// AI provider: OpenRouter
+// .env.local:
+// OPENROUTER_API_KEY=your_new_key_here
 
-// ✏️ EDIT THIS BLOCK to update your personal info — the AI will use it
-// whenever someone asks who made/created/developed the app.
 const CREATOR_INFO = `
 About the creator of BrainForge AI:
 - Name: Bob John Lapinig
@@ -11,124 +9,250 @@ About the creator of BrainForge AI:
 - Location: Muntinlupa City, Philippines
 - School: Pamantasan ng Lungsod ng Muntinlupa (PLMun)
 - Role: Developer and creator of BrainForge AI
-- Tech stack used to build this app: Next.js, React, TypeScript, TailwindCSS, Supabase (auth + database), and Groq for AI
+- Tech stack used to build this app: Next.js, React, TypeScript, TailwindCSS, Supabase (auth + database), and AI integration
 - Skills: Front-End Web Development, UI/UX design, and AI integration
-`
+`;
 
-const SYSTEM_PROMPT =
-  'You are BrainForge AI, a friendly study assistant for students and board-exam reviewees. ' +
-  'Explain clearly and concisely. Keep answers focused on studying.\n\n' +
+const SYSTEM_PROMPT = `
+You are BrainForge AI, a friendly study assistant for students and board-exam reviewees.
 
-  'If the user asks about the creator of this app (who made/created/developed it, or asks about the creator\'s ' +
-  'name, age, location, school, skills, tech stack, etc.), you have this reference info:\n' + CREATOR_INFO + '\n' +
-  'Answer ONLY the specific detail(s) asked — but say it with personality, like you\'re proud to talk about your ' +
-  'creator, not like you\'re reading a spec sheet. Weave the answer into a natural sentence instead of listing raw ' +
-  'facts. For example:\n' +
-  '  - "sino gumawa nito?" → something like "Ako si BrainForge AI, at ginawa ako ni Bob John Lapinig — 19 y/o ' +
-  'developer galing Muntinlupa City!" (not a bare name)\n' +
-  '  - "ilang taon na yung gumawa nito?" → something like "Si Bob, yung gumawa sa akin, ay 19 years old pa lang!"\n' +
-  '  - "saan nag-aaral yung gumawa nito?" → something like "Nag-aaral si Bob sa Pamantasan ng Lungsod ng ' +
-  'Muntinlupa (PLMun)!"\n' +
-  '  - "anong ginamit niyang tech stack?" → mention it conversationally, e.g. "Ginawa niya ako gamit ang Next.js, ' +
-  'React, TypeScript, TailwindCSS, Supabase, at Groq for AI — solid stack di ba?"\n' +
-  'Do NOT dump the entire info block unless the user explicitly asks for everything/full info about the creator. ' +
-  'Match the user\'s language/tone (Taglish if they\'re Taglish).\n\n' +
+Explain clearly and concisely.
+Keep answers focused on studying.
 
-  'You also act as an interactive study coach, not just a content generator. Follow these behaviors ' +
-  'depending on what the user is trying to do:\n' +
-  '- If the user is explaining a topic back to you (checking their own understanding), do NOT just re-explain ' +
-  'it yourself. Evaluate what they said: confirm what\'s correct, gently point out what\'s missing or wrong, ' +
-  'and correct misunderstandings.\n' +
-  '- If the user is stuck on a problem and wants guidance (not the direct answer), do NOT give the final answer ' +
-  'right away. Ask guiding questions one at a time, Socratic-style, to help them arrive at the answer themselves. ' +
-  'Only give the answer if they explicitly ask you to just tell them, or if they\'re clearly still stuck after ' +
-  'a few guiding questions.\n' +
-  '- If the user wants a quick recall check, look at the recent conversation history and ask 2-3 short questions ' +
-  'about what was just discussed. Wait for their answers before giving feedback — don\'t answer your own questions.\n' +
-  '- If the user wants something turned into a different format (mnemonic, story, analogy, diagram description), ' +
-  'ask what format they want if not specified, then commit fully to that format — don\'t just give a plain explanation.\n' +
-  '- If the user wants something broken down, use simple steps and a relatable analogy, especially for difficult ' +
-  'or technical language.\n' +
-  '- If the user wants to understand the "why" behind something, don\'t just define it — explain the reasoning, ' +
-  'the cause, or why it matters, in addition to what it is.\n\n' +
+If the user asks about the creator:
+${CREATOR_INFO}
 
-  'Formatting: use markdown to make answers clear and organized — bullet points for lists of facts/steps, ' +
-  '**bold** for key terms, numbered lists for sequential steps. Do NOT respond in one big paragraph when the ' +
-  'content has multiple distinct points; break it into bullets instead.\n\n' +
+Answer only the details asked.
+Match the user's language and tone.
 
-  'RESPONSE FORMAT — this is critical: you must ALWAYS reply with a single valid JSON object, ' +
-  'no markdown code fences, no preamble, no text outside the JSON. Pick exactly ONE of these shapes:\n\n' +
-  '{"type":"quiz","title":string,"duration_minutes":number,"passing_percent":number,"questions":[{"prompt":string,"options":[string,string,string,string],"correct_index":number,"explanation":string,"topic":string}]}\n\n' +
-  '{"type":"flashcards","title":string,"cards":[{"front":string,"back":string}]}\n\n' +
-  '{"type":"reviewer","title":string,"content":string}\n\n' +
-  '{"type":"text","text":string}\n\n' +
-  'Use "quiz" only when explicitly asked for a quiz, test, or exam. Use "flashcards" only when explicitly asked for flashcards. ' +
-  'Use "reviewer" for outlines, summaries, or study guides. Use "text" for everything else — explanations, mnemonics, ' +
-  'the creator question, or plain chat. The "text" field/content can use markdown formatting freely. Output raw JSON only, nothing else.'
+You are also an interactive study coach:
 
-const MODEL = 'llama-3.3-70b-versatile'
+- Evaluate explanations instead of simply repeating.
+- Guide users with questions when they need help solving problems.
+- Use simple explanations and analogies.
+- Explain the reason behind concepts.
+
+Formatting:
+Use markdown when helpful.
+Use bullets and numbered lists.
+
+IMPORTANT:
+Always return ONLY valid JSON.
+
+Allowed formats:
+
+{
+"type":"quiz",
+"title":"",
+"duration_minutes":0,
+"passing_percent":0,
+"questions":[
+ {
+ "prompt":"",
+ "options":["","","",""],
+ "correct_index":0,
+ "explanation":"",
+ "topic":""
+ }
+]
+}
+
+
+{
+"type":"flashcards",
+"title":"",
+"cards":[
+ {
+ "front":"",
+ "back":""
+ }
+]
+}
+
+
+{
+"type":"reviewer",
+"title":"",
+"content":""
+}
+
+
+{
+"type":"text",
+"text":""
+}
+
+
+Rules:
+- quiz only for quizzes
+- flashcards only for flashcards
+- reviewer for study guides
+- text for normal conversation
+`;
+
+// OpenRouter automatic routing + backups
+const MODELS = [
+  "openrouter/auto",
+
+  // backup free models
+  "qwen/qwen3-8b:free",
+  "google/gemma-3-27b-it:free",
+  "meta-llama/llama-3.1-8b-instruct:free",
+];
+
+async function callOpenRouter(
+  model: string,
+  apiKey: string,
+  messages: any[],
+  jsonMode = true,
+) {
+  return fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "http://localhost:3000",
+      "X-Title": "BrainForge AI",
+    },
+
+    body: JSON.stringify({
+      model,
+
+      max_tokens: 2048,
+
+      ...(jsonMode && {
+        response_format: {
+          type: "json_object",
+        },
+      }),
+
+      messages,
+    }),
+  });
+}
 
 function safeParseStructured(raw: string) {
   try {
-    const cleaned = raw.trim().replace(/^```json\s*|\s*```$/g, '').trim()
-    const parsed = JSON.parse(cleaned)
-    if (['quiz', 'flashcards', 'reviewer', 'text'].includes(parsed?.type)) return parsed
+    const cleaned = raw
+      .trim()
+      .replace(/^```json\s*/, "")
+      .replace(/```$/, "")
+      .trim();
+
+    const parsed = JSON.parse(cleaned);
+
+    if (["quiz", "flashcards", "reviewer", "text"].includes(parsed.type)) {
+      return parsed;
+    }
   } catch {}
-  // Model failed to return valid JSON — fall back to plain text so nothing breaks
-  return { type: 'text', text: raw }
+
+  return {
+    type: "text",
+    text: raw,
+  };
 }
 
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json()
-    const apiKey = process.env.GROQ_API_KEY
+    const { messages } = await req.json();
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+
     if (!apiKey) {
-      return Response.json({ error: 'GROQ_API_KEY is not set in .env.local' }, { status: 500 })
+      return Response.json(
+        {
+          error: "OPENROUTER_API_KEY missing",
+        },
+        {
+          status: 500,
+        },
+      );
     }
 
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 2048,
-        response_format: { type: 'json_object' }, // pinipilit ni Groq na JSON talaga yung output
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
-      }),
-    })
+    let finalData: any = null;
 
-    const data = await res.json()
-    if (!res.ok) {
-      const errorMessage = (data.error?.message ?? '').toLowerCase();
-  
-      if (
-        errorMessage.includes('rate limit') ||
-        errorMessage.includes('tokens per day') ||
-        errorMessage.includes('tpd')
-      ) {
-        return Response.json(
+    for (const model of MODELS) {
+      console.log("Trying model:", model);
+
+      let res = await callOpenRouter(
+        model,
+        apiKey,
+        [
           {
-            error:
-            '🚫 AI Limit Reached\n\nBrainForge AI has reached its daily usage limit.\nPlease try again later.',
+            role: "system",
+            content: SYSTEM_PROMPT,
           },
-          { status: 429 }
-        );
+          ...messages,
+        ],
+        true,
+      );
+
+      let data = await res.json();
+
+      if (res.ok) {
+        finalData = data;
+        break;
       }
 
-  return Response.json(
-    {
-      error: 'Unable to process your request at the moment.',
-    },
-    { status: res.status }
-  );
-}
+      // retry without JSON mode
 
-    const text: string = data.choices?.[0]?.message?.content ?? '{"type":"text","text":"Sorry, I could not generate a response."}'
-    return Response.json({ structured: safeParseStructured(text) })
-  } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 })
+      console.log("JSON mode failed, retrying:", model);
+
+      res = await callOpenRouter(
+        model,
+        apiKey,
+        [
+          {
+            role: "system",
+            content: SYSTEM_PROMPT,
+          },
+          ...messages,
+        ],
+        false,
+      );
+
+      data = await res.json();
+
+      if (res.ok) {
+        finalData = data;
+        break;
+      }
+
+      console.log("Failed:", model, data.error?.message);
+    }
+
+    if (!finalData) {
+      return Response.json(
+        {
+          error: "All AI providers are currently unavailable.",
+        },
+        {
+          status: 429,
+        },
+      );
+    }
+
+    const output =
+      finalData.choices?.[0]?.message?.content ??
+      `{
+"type":"text",
+"text":"No response generated"
+}`;
+
+    return Response.json({
+      structured: safeParseStructured(output),
+    });
+  } catch (error) {
+    console.error(error);
+
+    return Response.json(
+      {
+        error: "Something went wrong connecting to AI.",
+      },
+      {
+        status: 500,
+      },
+    );
   }
 }
