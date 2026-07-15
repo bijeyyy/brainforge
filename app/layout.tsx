@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={cn("font-sans", inter.variable, poppins.variable)}>
+    <html lang="en" suppressHydrationWarning className={cn("font-sans", inter.variable, poppins.variable)}>
       <body>
         {/* Apply the saved theme before first paint to avoid a light-mode flash */}
         <script dangerouslySetInnerHTML={{ __html:

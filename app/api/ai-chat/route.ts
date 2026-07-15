@@ -1,43 +1,32 @@
 // AI provider: OpenRouter
 // .env.local:
 // OPENROUTER_API_KEY=your_new_key_here
+// SUPABASE_URL=your_supabase_url
+// SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+import { createClient } from "@supabase/supabase-js";
 
 const CREATOR_INFO = `
-About the creator of BrainForge AI:
-- Name: Bob John Lapinig
-- Age: 19 years old
-- Location: Muntinlupa City, Philippines
-- School: Pamantasan ng Lungsod ng Muntinlupa (PLMun)
-- Role: Developer and creator of BrainForge AI
-- Tech stack used to build this app: Next.js, React, TypeScript, TailwindCSS, Supabase (auth + database), and AI integration
-- Skills: Front-End Web Development, UI/UX design, and AI integration
+Creator Information (CONFIDENTIAL)
+
+Only reveal this information if the user explicitly asks about the creator or developer.
+
+Name: Bob John Lapinig
+Age: 19
+Location: Muntinlupa City
+School: PLMun
+Role: Creator of BrainForge AI
+
+Never mention this information in normal conversations.
 `;
 
 const SYSTEM_PROMPT = `
-You are BrainForge AI, a friendly study assistant for students and board-exam reviewees.
+You are BrainForge AI, a friendly AI study assistant for students and board-exam reviewees.
 
-Explain clearly and concisely.
-Keep answers focused on studying.
-
-If the user asks about the creator:
-${CREATOR_INFO}
-
-Answer only the details asked.
-Match the user's language and tone.
-
-You are also an interactive study coach:
-
-- Evaluate explanations instead of simply repeating.
-- Guide users with questions when they need help solving problems.
-- Use simple explanations and analogies.
-- Explain the reason behind concepts.
-
-Formatting:
-Use markdown when helpful.
-Use bullets and numbered lists.
+... (all your general rules, creator info, coaching rules, formatting rules) ...
 
 IMPORTANT:
-Always return ONLY valid JSON.
+Return ONLY valid JSON.
 
 Allowed formats:
 
@@ -57,7 +46,6 @@ Allowed formats:
 ]
 }
 
-
 {
 "type":"flashcards",
 "title":"",
@@ -69,19 +57,16 @@ Allowed formats:
 ]
 }
 
-
 {
 "type":"reviewer",
 "title":"",
 "content":""
 }
 
-
 {
 "type":"text",
 "text":""
 }
-
 
 Rules:
 - quiz only for quizzes
@@ -89,6 +74,10 @@ Rules:
 - reviewer for study guides
 - text for normal conversation
 `;
+
+// ---- Rate limit settings ----
+const DAILY_LIMIT = 20; // total requests per user per day
+const PER_MINUTE_LIMIT = 5; // burst/spam guard: max requests per rolling 60s window
 
 // OpenRouter automatic routing + backups
 const MODELS = [
@@ -99,6 +88,98 @@ const MODELS = [
   "google/gemma-3-27b-it:free",
   "meta-llama/llama-3.1-8b-instruct:free",
 ];
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
+
+// ---- Rate limit check + increment (daily cap + per-minute throttle) ----
+// Uses the ai_usage table (unique on user_id + usage_date), same as the edge function.
+type RateLimitResult =
+  | { allowed: true }
+  | { allowed: false; reason: "daily"; resetAt: Date }
+  | { allowed: false; reason: "minute"; retryAfterSeconds: number };
+
+async function checkAndConsumeRateLimit(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+): Promise<RateLimitResult> {
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+
+  const { data: usage, error } = await supabase
+    .from("ai_usage")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("usage_date", today)
+    .maybeSingle();
+
+  console.log("SELECT usage:", usage);
+  console.log("SELECT error:", error);
+
+  if (!usage) {
+    const { data, error } = await supabase
+      .from("ai_usage")
+      .insert({
+        user_id: userId,
+        usage_date: today,
+        request_count: 1,
+        minute_window_start: now.toISOString(),
+        minute_count: 1,
+      })
+      .select();
+
+    console.log("INSERT DATA:", data);
+    console.log("INSERT ERROR:", error);
+
+    return { allowed: true };
+  }
+
+  if (usage.request_count >= DAILY_LIMIT) {
+    const resetAt = new Date();
+    resetAt.setDate(resetAt.getDate() + 1);
+    resetAt.setHours(0, 0, 0, 0);
+    return { allowed: false, reason: "daily", resetAt };
+  }
+
+  const windowStart = usage.minute_window_start
+    ? new Date(usage.minute_window_start)
+    : null;
+  const windowExpired =
+    !windowStart || now.getTime() - windowStart.getTime() >= 60_000;
+
+  let newWindowStart = windowStart ?? now;
+  let newMinuteCount = usage.minute_count ?? 0;
+
+  if (windowExpired) {
+    newWindowStart = now;
+    newMinuteCount = 1;
+  } else {
+    if (newMinuteCount >= PER_MINUTE_LIMIT) {
+      const retryAfterMs = 60_000 - (now.getTime() - windowStart!.getTime());
+      return {
+        allowed: false,
+        reason: "minute",
+        retryAfterSeconds: Math.ceil(retryAfterMs / 1000),
+      };
+    }
+    newMinuteCount += 1;
+  }
+
+  await supabase
+    .from("ai_usage")
+    .update({
+      request_count: usage.request_count + 1,
+      minute_window_start: newWindowStart.toISOString(),
+      minute_count: newMinuteCount,
+    })
+    .eq("id", usage.id);
+
+  return { allowed: true };
+}
 
 async function callOpenRouter(
   model: string,
@@ -155,7 +236,18 @@ function safeParseStructured(raw: string) {
 
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json();
+    const { messages, userId } = await req.json();
+
+    if (!userId) {
+      return Response.json(
+        {
+          error: "User not authenticated",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
 
     const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -167,6 +259,34 @@ export async function POST(req: Request) {
         {
           status: 500,
         },
+      );
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    // CHECK + CONSUME RATE LIMIT (daily + per-minute)
+    const rateLimit = await checkAndConsumeRateLimit(supabase, userId);
+
+    if (!rateLimit.allowed) {
+      if (rateLimit.reason === "daily") {
+        return Response.json(
+          {
+            error: `🚫 Daily AI limit reached.
+
+            Your limit will automatically reset tomorrow at 12:00 AM.
+
+            See you tomorrow!`,
+          },
+          { status: 429 },
+        );
+      }
+
+      // per-minute throttle
+      return Response.json(
+        {
+          error: `⏳ Sending too fast. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+        },
+        { status: 429 },
       );
     }
 
@@ -243,12 +363,12 @@ export async function POST(req: Request) {
     return Response.json({
       structured: safeParseStructured(output),
     });
-  } catch (error) {
-    console.error(error);
+  } catch (error: any) {
+    console.error("AI ROUTE ERROR:", error);
 
     return Response.json(
       {
-        error: "Something went wrong connecting to AI.",
+        error: String(error?.message ?? error),
       },
       {
         status: 500,
